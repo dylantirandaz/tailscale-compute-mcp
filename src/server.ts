@@ -7,6 +7,10 @@ import {
   type Environment,
 } from "./config.js";
 import {
+  type AuditEntry,
+  writeAuditEntry,
+} from "./audit.js";
+import {
   RemoteComputeService,
   type RemoteRunOutcome,
   type StatusOutcome,
@@ -78,6 +82,8 @@ const remoteHardwareBaseShape = {
   memoryBytes: z.number().int().positive(),
   shell: z.enum(["/bin/sh", "/bin/bash", "/bin/zsh"]),
   rsyncVersion: z.string(),
+  uid: z.number().int().nonnegative(),
+  isRoot: z.boolean(),
   acceleratorInventory: acceleratorInventorySchema,
 } as const;
 
@@ -129,6 +135,7 @@ const statusOutputSchema = z.discriminatedUnion("kind", [
     remoteRoot: z.string(),
     remoteWorkspace: z.string(),
     hardware: remoteHardwareSchema,
+    warning: z.string().optional(),
     durationMilliseconds: z.number().nonnegative(),
   }),
   z.object({
@@ -148,6 +155,12 @@ const statusOutputSchema = z.discriminatedUnion("kind", [
   }),
 ]);
 
+const auditInfoSchema = z.object({
+  path: z.string(),
+  appended: z.boolean(),
+  error: z.string().optional(),
+});
+
 const runOutputSchema = z.discriminatedUnion("kind", [
   configurationErrorSchema,
   z.object({
@@ -159,6 +172,8 @@ const runOutputSchema = z.discriminatedUnion("kind", [
     stderr: capturedOutputSchema,
     syncDurationMilliseconds: z.number().nonnegative(),
     commandDurationMilliseconds: z.number().nonnegative(),
+    warning: z.string().optional(),
+    audit: auditInfoSchema,
   }),
   z.object({
     kind: z.literal("workspace_error"),
@@ -170,6 +185,7 @@ const runOutputSchema = z.discriminatedUnion("kind", [
     remoteWorkspace: z.string(),
     stage: z.enum(["probe", "prepare", "sync", "command"]),
     process: processOutcomeSchema,
+    audit: auditInfoSchema,
   }),
   z.object({
     kind: z.literal("protocol_error"),
@@ -177,6 +193,7 @@ const runOutputSchema = z.discriminatedUnion("kind", [
     remoteWorkspace: z.string(),
     message: z.string(),
     process: processOutcomeSchema,
+    audit: auditInfoSchema,
   }),
 ]);
 
@@ -256,9 +273,14 @@ type ConfigurationToolOutcome = {
 
 type StatusToolOutcome = StatusOutcome | ConfigurationToolOutcome;
 type RunToolOutcome = RemoteRunOutcome | ConfigurationToolOutcome;
+type AuditedRunOutcome = z.infer<typeof runOutputSchema>;
 
 type ServerRuntime =
-  | { readonly kind: "ready"; readonly service: RemoteComputeService }
+  | {
+      readonly kind: "ready";
+      readonly service: RemoteComputeService;
+      readonly auditLogPath: string;
+    }
   | { readonly kind: "configuration_error"; readonly error: ConfigurationError };
 
 export function createServer(
@@ -269,6 +291,7 @@ export function createServer(
     ? {
         kind: "ready",
         service: new RemoteComputeService(configurationResult.value),
+        auditLogPath: configurationResult.value.auditLogPath,
       }
     : { kind: "configuration_error", error: configurationResult.error };
 
@@ -352,10 +375,50 @@ export function createServer(
         });
       }
 
+      let structuredContent: RunToolOutcome | AuditedRunOutcome = outcome;
+      if (
+        runtime.kind === "ready" &&
+        (outcome.kind === "completed" ||
+          outcome.kind === "stage_failed" ||
+          outcome.kind === "protocol_error")
+      ) {
+        const auditEntry: AuditEntry = {
+          timestamp: new Date().toISOString(),
+          target: outcome.target,
+          remoteWorkspace: outcome.remoteWorkspace,
+          localWorkspace: input.workspacePath ?? "(MCP process directory)",
+          program: input.program,
+          arguments: input.arguments,
+          workingDirectory: input.workingDirectory,
+          syncMode: input.syncMode,
+          outcomeKind: outcome.kind,
+          exitCode:
+            outcome.kind === "completed" ? outcome.exitCode : undefined,
+          stage: outcome.kind === "stage_failed" ? outcome.stage : undefined,
+        };
+        const auditWriteResult = writeAuditEntry(
+          runtime.auditLogPath,
+          auditEntry,
+        );
+        structuredContent = {
+          ...outcome,
+          audit: {
+            path: runtime.auditLogPath,
+            appended: auditWriteResult.kind === "appended",
+            error:
+              auditWriteResult.kind === "failed"
+                ? auditWriteResult.message
+                : undefined,
+          },
+        };
+      }
+
       const isError = outcome.kind !== "completed" || outcome.exitCode !== 0;
       return {
-        content: [{ type: "text", text: JSON.stringify(outcome, null, 2) }],
-        structuredContent: outcome,
+        content: [
+          { type: "text", text: JSON.stringify(structuredContent, null, 2) },
+        ],
+        structuredContent,
         isError,
       };
     },

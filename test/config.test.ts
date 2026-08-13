@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import os from "node:os";
+import path from "node:path";
+
 import {
   isDirectTailscaleHost,
   parseConfiguration,
@@ -69,6 +72,22 @@ test("builds the default safe configuration", () => {
     assert.equal(result.value.remoteShell, "auto");
     assert.equal(result.value.connectTimeoutSeconds, 10);
     assert.equal(result.value.defaultWorkspace, undefined);
+    assert.equal(
+      result.value.auditLogPath,
+      path.join(os.homedir(), ".config", "tailscale-compute-mcp", "compute-audit.log"),
+    );
+  }
+});
+
+test("honors an explicit audit log path", () => {
+  const result = parseConfiguration({
+    TAILSCALE_COMPUTE_HOST: "builder@100.71.137.123",
+    TAILSCALE_COMPUTE_AUDIT_LOG: "/var/log/tailscale-compute/audit.log",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.auditLogPath, "/var/log/tailscale-compute/audit.log");
   }
 });
 

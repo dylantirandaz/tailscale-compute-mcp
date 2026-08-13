@@ -35,7 +35,7 @@ The package does not provide:
 
 ## Required user controls
 
-1. Use a dedicated non-root remote user.
+1. Use a dedicated non-root remote user for `compute_run`. The server reports the remote user id and warns in `compute_status` and `compute_run` results when the SSH user is root (uid 0). A root compute user removes the last privilege boundary on the remote node.
 2. Limit the source and destination with Tailscale policy rules.
 3. Use an SSH agent or Tailscale SSH. Do not place private keys or passwords in MCP configuration.
 4. Verify the SSH host key before the first MCP call.
@@ -44,7 +44,18 @@ The package does not provide:
 7. Review command arguments before approval.
 8. Add project secrets to `.gitignore` or `.tailscale-compute-ignore`.
 9. Review remote command output before sending it to another system.
-10. Remove access when a local or remote device is lost.
+10. Treat the local audit log as sensitive. It records every `compute_run` and can reveal project layout and command history.
+11. Remove access when a local or remote device is lost.
+
+## Audit log
+
+Every `compute_run` that reaches the workspace is appended as one JSON line to a local audit log. The default path is:
+
+```text
+~/.config/tailscale-compute-mcp/compute-audit.log
+```
+
+Set `TAILSCALE_COMPUTE_AUDIT_LOG` to use a different path. Each record contains the timestamp, target, remote workspace, program, arguments, working directory, sync mode, and outcome. It never contains environment variable values, standard input, or credentials. The audit log cannot prevent abuse; it provides a trail for review after a compromise. Protect it from readers who should not see command history.
 
 ## File synchronization
 
@@ -58,7 +69,7 @@ The default remote root is:
 
 Do not set the remote root to a directory that contains unrelated data.
 
-The package respects `.gitignore` and `.tailscale-compute-ignore`. It also excludes common secret-file patterns. These rules cannot identify every secret. The user remains responsible for the files in the local project.
+The package respects `.gitignore` and `.tailscale-compute-ignore`. It also excludes common secret-file patterns and per-user credential directories, including `.ssh/`, `.aws/`, `.gnupg/`, `.netrc`, `.git-credentials`, shell histories, and key and certificate files. These rules cannot identify every secret. The user remains responsible for the files in the local project. In particular, never point `workspacePath` at a home directory or other broad root, because unknown secret files could still match.
 
 ## Command output
 

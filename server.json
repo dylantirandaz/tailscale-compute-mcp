@@ -51,6 +51,13 @@
           "isRequired": false,
           "isSecret": false,
           "format": "string"
+        },
+        {
+          "name": "TAILSCALE_COMPUTE_AUDIT_LOG",
+          "description": "Local audit log path. The default is ~/.config/tailscale-compute-mcp/compute-audit.log.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
         }
       ]
     }

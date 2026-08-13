@@ -24,10 +24,20 @@ const SYNC_EXCLUSIONS = [
   ".env.*",
   ".npmrc",
   ".pypirc",
+  ".ssh/",
+  ".aws/",
+  ".gnupg/",
+  ".git-credentials",
+  ".netrc",
+  "*_history",
+  ".curlrc",
+  ".wgetrc",
   "*.pem",
   "*.key",
   "*.p12",
   "*.pfx",
+  "*.secret",
+  "secrets/",
   "node_modules/",
   ".venv/",
   "venv/",
@@ -85,6 +95,8 @@ interface RemoteHardwareBase {
   readonly memoryBytes: number;
   readonly shell: RemoteShellPath;
   readonly rsyncVersion: string;
+  readonly uid: number;
+  readonly isRoot: boolean;
   readonly acceleratorInventory: AcceleratorInventory;
 }
 
@@ -139,6 +151,7 @@ export type StatusOutcome =
       readonly remoteRoot: string;
       readonly remoteWorkspace: string;
       readonly hardware: RemoteHardware;
+      readonly warning?: string;
       readonly durationMilliseconds: number;
     }
   | {
@@ -179,6 +192,7 @@ export type RemoteRunOutcome =
       readonly stderr: CapturedOutput;
       readonly syncDurationMilliseconds: number;
       readonly commandDurationMilliseconds: number;
+      readonly warning?: string;
     }
   | {
       readonly kind: "workspace_error";
@@ -249,6 +263,9 @@ export class RemoteComputeService {
       remoteRoot: this.#configuration.remoteRoot,
       remoteWorkspace: workspaceResult.value.remotePath,
       hardware: hardwareResult.value,
+      ...(hardwareResult.value.isRoot
+        ? { warning: rootWarning(this.#configuration.target.destination) }
+        : {}),
       durationMilliseconds: probeProcess.durationMilliseconds,
     };
   }
@@ -381,6 +398,9 @@ export class RemoteComputeService {
       stderr: commandResult.value.stderr,
       syncDurationMilliseconds,
       commandDurationMilliseconds: commandProcess.durationMilliseconds,
+      ...(hardwareResult.value.isRoot
+        ? { warning: rootWarning(this.#configuration.target.destination) }
+        : {}),
     };
   }
 
@@ -584,6 +604,10 @@ class WorkspaceQueue {
   }
 }
 
+function rootWarning(target: string): string {
+  return `The remote compute user is root (uid 0) on ${target}. Run compute_run through a dedicated non-root SSH user so a compromised build cannot control the whole node.`;
+}
+
 export function parseRemoteRelativePath(
   rawPath: string,
 ): Result<string, string> {
@@ -663,6 +687,7 @@ function buildRemoteProbeCommand(
     `printf 'architecture=%s\\n' "$(uname -m)"`,
     `printf 'shell=%s\\n' "$selected_shell"`,
     `printf 'rsyncVersion=%s\\n' "$(rsync --version | sed -n '1p')"`,
+    `printf 'uid=%s\\n' "$(id -u 2>/dev/null || /usr/bin/id -u 2>/dev/null)"`,
     `case "$platform" in`,
     `  Darwin)`,
     `    printf 'productName=%s\\n' "$(/usr/bin/sw_vers -productName)"`,
@@ -744,6 +769,7 @@ export function parseRemoteHardware(
   const shell = values["shell"];
   const rsyncVersion = values["rsyncVersion"];
   const logicalProcessors = Number(values["logicalProcessors"]);
+  const uid = Number(values["uid"]);
 
   if (
     hostname === undefined ||
@@ -756,12 +782,16 @@ export function parseRemoteHardware(
     rsyncVersion === undefined ||
     rsyncVersion.length === 0 ||
     !Number.isSafeInteger(logicalProcessors) ||
-    logicalProcessors < 1
+    logicalProcessors < 1 ||
+    !Number.isSafeInteger(uid) ||
+    uid < 0
   ) {
     return failure(
       `The remote hardware probe returned incomplete common data. Raw output:\n${probeOutput}`,
     );
   }
+
+  const isRoot = uid === 0;
 
   const acceleratorInventory = parseAcceleratorInventory(
     nvidiaRows,
@@ -801,6 +831,8 @@ export function parseRemoteHardware(
         memoryBytes,
         shell,
         rsyncVersion,
+        uid,
+        isRoot,
         acceleratorInventory,
       });
     }
@@ -838,6 +870,8 @@ export function parseRemoteHardware(
         memoryBytes,
         shell,
         rsyncVersion,
+        uid,
+        isRoot,
         acceleratorInventory,
       });
     }

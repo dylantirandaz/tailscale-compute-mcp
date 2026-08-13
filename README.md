@@ -36,6 +36,8 @@ The package runs on the local computer. No MCP service runs on the remote node. 
 `compute_run` can run any non-interactive command with the permissions of the remote SSH user. Treat it as remote code execution.
 
 - Use a dedicated non-root account on the remote node.
+- `compute_status` reports the remote user id and warns when the SSH user is root. Run compute through a non-root user so a compromised build cannot control the whole node.
+- Every `compute_run` is recorded in a local audit log (program, arguments, workspace, and result). It never contains environment values, standard input, or credentials.
 - Do not auto-approve `compute_run` calls.
 - Do not put passwords, SSH private keys, or Tailscale auth keys in MCP configuration.
 - Use an SSH agent or Tailscale SSH.
@@ -242,10 +244,20 @@ The sync reads `.gitignore` and `.tailscale-compute-ignore` files. It also exclu
 .env.*
 .npmrc
 .pypirc
+.ssh/
+.aws/
+.gnupg/
+.git-credentials
+.netrc
+*_history
+.curlrc
+.wgetrc
 *.pem
 *.key
 *.p12
 *.pfx
+*.secret
+secrets/
 node_modules/
 .venv/
 venv/
@@ -267,6 +279,7 @@ Ignored files are not copied. If a required file is ignored, create it on the re
 | `TAILSCALE_COMPUTE_REMOTE_ROOT` | No | `.cache/tailscale-compute-mcp` | Managed remote workspace root. |
 | `TAILSCALE_COMPUTE_REMOTE_SHELL` | No | `auto` | `auto`, `/bin/sh`, `/bin/bash`, or `/bin/zsh`. |
 | `TAILSCALE_COMPUTE_CONNECT_TIMEOUT_SECONDS` | No | `10` | SSH connection timeout from 1 through 60 seconds. |
+| `TAILSCALE_COMPUTE_AUDIT_LOG` | No | `~/.config/tailscale-compute-mcp/compute-audit.log` | Local audit log path for `compute_run` records. |
 
 Automatic shell selection uses `/bin/zsh` on Darwin. It uses `/bin/bash` on Linux when available and `/bin/sh` otherwise.
 

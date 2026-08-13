@@ -1,4 +1,5 @@
 import { isIP } from "node:net";
+import os from "node:os";
 import path from "node:path";
 
 import { failure, success, type Result } from "./result.js";
@@ -7,6 +8,12 @@ const DEFAULT_REMOTE_ROOT = ".cache/tailscale-compute-mcp";
 const DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
 const MINIMUM_CONNECT_TIMEOUT_SECONDS = 1;
 const MAXIMUM_CONNECT_TIMEOUT_SECONDS = 60;
+const DEFAULT_AUDIT_LOG_PATH = path.join(
+  os.homedir(),
+  ".config",
+  "tailscale-compute-mcp",
+  "compute-audit.log",
+);
 
 export interface TailscaleTarget {
   readonly destination: string;
@@ -25,6 +32,7 @@ export interface ComputeConfiguration {
   readonly defaultWorkspace: string | undefined;
   readonly remoteShell: RemoteShellPreference;
   readonly connectTimeoutSeconds: number;
+  readonly auditLogPath: string;
 }
 
 export type ConfigurationErrorCode =
@@ -86,13 +94,23 @@ export function parseConfiguration(
     return connectTimeoutResult;
   }
 
+  const auditLogPath = parseAuditLogPath(
+    environment["TAILSCALE_COMPUTE_AUDIT_LOG"],
+  );
+
   return success({
     target: targetResult.value,
     remoteRoot: remoteRootResult.value,
     defaultWorkspace: defaultWorkspaceResult.value,
     remoteShell: remoteShellResult.value,
     connectTimeoutSeconds: connectTimeoutResult.value,
+    auditLogPath,
   });
+}
+
+function parseAuditLogPath(rawAuditLog: string | undefined): string {
+  const trimmed = rawAuditLog?.trim() ?? "";
+  return trimmed.length === 0 ? DEFAULT_AUDIT_LOG_PATH : trimmed;
 }
 
 export function parseTailscaleTarget(

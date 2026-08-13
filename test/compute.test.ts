@@ -39,6 +39,22 @@ test("protects ignored files and common credentials during sync", () => {
     "--exclude",
     ".pypirc",
     "--exclude",
+    ".ssh/",
+    "--exclude",
+    ".aws/",
+    "--exclude",
+    ".gnupg/",
+    "--exclude",
+    ".git-credentials",
+    "--exclude",
+    ".netrc",
+    "--exclude",
+    "*_history",
+    "--exclude",
+    ".curlrc",
+    "--exclude",
+    ".wgetrc",
+    "--exclude",
     "*.pem",
     "--exclude",
     "*.key",
@@ -46,6 +62,10 @@ test("protects ignored files and common credentials during sync", () => {
     "*.p12",
     "--exclude",
     "*.pfx",
+    "--exclude",
+    "*.secret",
+    "--exclude",
+    "secrets/",
     "--exclude",
     "node_modules/",
     "--exclude",
@@ -88,6 +108,7 @@ test("parses Darwin hardware with an automatic zsh selection", () => {
       "architecture=arm64",
       "shell=/bin/zsh",
       "rsyncVersion=openrsync: protocol version 29",
+      "uid=501",
       "productName=macOS",
       "productVersion=26.5.1",
       "buildVersion=25F80",
@@ -108,6 +129,8 @@ test("parses Darwin hardware with an automatic zsh selection", () => {
       memoryBytes: 17_179_869_184,
       shell: "/bin/zsh",
       rsyncVersion: "openrsync: protocol version 29",
+      uid: 501,
+      isRoot: false,
       acceleratorInventory: { kind: "none" },
       productName: "macOS",
       productVersion: "26.5.1",
@@ -124,6 +147,7 @@ test("parses Linux hardware and NVIDIA accelerator inventory", () => {
       "architecture=aarch64",
       "shell=/bin/bash",
       "rsyncVersion=rsync version 3.2.7 protocol version 31",
+      "uid=1000",
       "distributionName=Ubuntu 24.04.3 LTS",
       "distributionVersion=24.04",
       "kernelVersion=6.11.0",
@@ -145,6 +169,8 @@ test("parses Linux hardware and NVIDIA accelerator inventory", () => {
       memoryBytes: 134_217_728,
       shell: "/bin/bash",
       rsyncVersion: "rsync version 3.2.7 protocol version 31",
+      uid: 1000,
+      isRoot: false,
       acceleratorInventory: {
         kind: "nvidia",
         devices: [
@@ -173,6 +199,7 @@ test("reports an accelerator probe failure without hiding host hardware", () => 
       "architecture=x86_64",
       "shell=/bin/bash",
       "rsyncVersion=rsync version 3.2.7 protocol version 31",
+      "uid=0",
       "distributionName=Ubuntu",
       "distributionVersion=24.04",
       "kernelVersion=6.8.0",
@@ -190,6 +217,51 @@ test("reports an accelerator probe failure without hiding host hardware", () => 
       message: "nvidia-smi failed: driver unavailable",
     });
   }
+});
+
+test("flags a root remote compute user", () => {
+  const result = parseRemoteHardware(
+    [
+      "platform=Linux",
+      "hostname=root-node",
+      "architecture=aarch64",
+      "shell=/bin/bash",
+      "rsyncVersion=rsync version 3.2.7 protocol version 31",
+      "uid=0",
+      "distributionName=Debian GNU/Linux",
+      "distributionVersion=12",
+      "kernelVersion=6.1.0",
+      "processor=Example CPU",
+      "logicalProcessors=4",
+      "memoryKilobytes=32768",
+    ].join("\n"),
+  );
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.uid, 0);
+    assert.equal(result.value.isRoot, true);
+  }
+});
+
+test("rejects a probe without a remote user id", () => {
+  const result = parseRemoteHardware(
+    [
+      "platform=Linux",
+      "hostname=broken-node",
+      "architecture=x86_64",
+      "shell=/bin/bash",
+      "rsyncVersion=rsync version 3.2.7 protocol version 31",
+      "distributionName=Ubuntu",
+      "distributionVersion=24.04",
+      "kernelVersion=6.1.0",
+      "processor=Example CPU",
+      "logicalProcessors=4",
+      "memoryKilobytes=32768",
+    ].join("\n"),
+  );
+
+  assert.equal(result.ok, false);
 });
 
 test("rejects unsupported remote platforms", () => {
