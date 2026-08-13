@@ -39,6 +39,32 @@ test("rejects targets outside the Tailscale address space", () => {
   }
 });
 
+test("rejects hostile and ambiguous targets for SSH", () => {
+  const targets = [
+    "user@100.64.0.1:2222",
+    "100.64.0.0/10",
+    "user@100.64.0.1/32",
+    "fd7a:115c:a1e0::1",
+    "user@fd7a:115c:a1e0::1",
+    "[fd7a:115c:a1e0::1]:22",
+    "user@-oIdentityFile=/tmp/x 100.64.0.1",
+    "-oProxyCommand=sh -i",
+    "user@host.ts.net:22",
+    "user@100.64.0.1#22",
+    "100 .64.0.1",
+    "user@100.64.0.1 pushd",
+    "user@100.64.0.1\\ evil",
+    "user@100.64.0.1\u0000",
+    "user@",
+    "@100.64.0.1",
+  ];
+
+  for (const target of targets) {
+    const result = parseTailscaleTarget(target);
+    assert.equal(result.ok, false, target);
+  }
+});
+
 test("parses an SSH user without weakening target validation", () => {
   const result = parseTailscaleTarget("builder@100.71.137.123");
 

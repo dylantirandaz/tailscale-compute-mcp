@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -38,6 +38,8 @@ test("appends a JSON audit line and creates its directory", () => {
     assert.deepEqual(second, { kind: "appended" });
 
     const lines = readFileSync(logPath, "utf8").trimEnd().split("\n");
+    assert.equal(statSync(path.dirname(logPath)).mode & 0o777, 0o700);
+    assert.equal(statSync(logPath).mode & 0o777, 0o600);
     assert.equal(lines.length, 2);
     const firstLine = lines[0];
     const secondLine = lines[1];

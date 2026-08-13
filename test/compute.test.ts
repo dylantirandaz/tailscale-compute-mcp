@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import test from "node:test";
 
 import {
-  DEFAULT_SYNC_FILTER_ARGUMENTS,
+  DEFAULT_SYNC_EXCLUSION_ARGUMENTS,
+  buildSyncFilterArguments,
   parseRemoteHardware,
   parseRemoteRelativePath,
   quoteForPosixShell,
@@ -25,9 +28,7 @@ test("keeps a remote working directory inside the workspace", () => {
 });
 
 test("protects ignored files and common credentials during sync", () => {
-  assert.deepEqual(DEFAULT_SYNC_FILTER_ARGUMENTS, [
-    "--filter=:- .gitignore",
-    "--filter=:- .tailscale-compute-ignore",
+  assert.deepEqual(DEFAULT_SYNC_EXCLUSION_ARGUMENTS, [
     "--exclude",
     ".git/",
     "--exclude",
@@ -81,13 +82,87 @@ test("protects ignored files and common credentials during sync", () => {
   ]);
 });
 
+test("uses fixed exclusions when workspace ignore files are absent", () => {
+  const arguments_ = buildSyncFilterArguments("/some/workspace");
+  assert.deepEqual(arguments_, DEFAULT_SYNC_EXCLUSION_ARGUMENTS);
+});
+
+test("uses the workspace ignore files, not the process directory", () => {
+  const directory = mkdtempSync(`${tmpdir()}/tailscale-compute-ignore-`);
+  try {
+    writeFileSync(
+      `${directory}/.tailscale-compute-ignore`,
+      [
+        "generated.log",
+        "build-out/",
+        "!keep.generated.log",
+        "!.env",
+        "bad\0pattern",
+        "# comment and blank lines are skipped",
+        "",
+        "/root-only.txt",
+      ].join("\n"),
+    );
+    writeFileSync(`${directory}/.gitignore`, "*.tmp\n");
+
+    const filterArguments = buildSyncFilterArguments(directory);
+    assert.deepEqual(
+      filterArguments.slice(0, DEFAULT_SYNC_EXCLUSION_ARGUMENTS.length),
+      DEFAULT_SYNC_EXCLUSION_ARGUMENTS,
+    );
+    assert.deepEqual(
+      filterArguments.slice(DEFAULT_SYNC_EXCLUSION_ARGUMENTS.length),
+      [
+        "--include",
+        "keep.generated.log",
+        "--include",
+        ".env",
+        "--exclude",
+        "*.tmp",
+        "--exclude",
+        "generated.log",
+        "--exclude",
+        "build-out/",
+        "--exclude",
+        "/root-only.txt",
+      ],
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("skips a runaway ignore file", () => {
+  const directory = mkdtempSync(`${tmpdir()}/tailscale-compute-ignore-`);
+  try {
+    const content = "x\n".repeat(600_000);
+    writeFileSync(`${directory}/.gitignore`, content);
+    assert.deepEqual(
+      buildSyncFilterArguments(directory),
+      DEFAULT_SYNC_EXCLUSION_ARGUMENTS,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("quotes remote command values without shell expansion", () => {
   const values = [
     "plain",
     "two words",
     "apostrophe's value",
     "$(printf injected)",
+    "`printf injected`",
+    "a | b; c && d",
+    "' ; rm -rf / ; '",
+    "* ? [x] {y}",
+    '~ " double" \\ backslash',
     "line one\nline two",
+    "!bang # comment",
+    "日本語-π",
+    "\u001b[31mred\u001b[0m",
+    "$IFS$(id)",
+    "a\tb",
   ];
 
   for (const value of values) {

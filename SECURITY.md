@@ -55,7 +55,7 @@ Every `compute_run` that reaches the workspace is appended as one JSON line to a
 ~/.config/tailscale-compute-mcp/compute-audit.log
 ```
 
-Set `TAILSCALE_COMPUTE_AUDIT_LOG` to use a different path. Each record contains the timestamp, target, remote workspace, program, arguments, working directory, sync mode, and outcome. It never contains environment variable values, standard input, or credentials. The audit log cannot prevent abuse; it provides a trail for review after a compromise. Protect it from readers who should not see command history.
+Set `TAILSCALE_COMPUTE_AUDIT_LOG` to use a different path. Each record contains the timestamp, target, remote workspace, program, arguments, working directory, sync mode, and outcome. It never contains environment variable values, standard input, or credentials. New audit directories use mode `0700`, and new audit files use mode `0600`. Existing paths keep their current permissions. The audit log cannot prevent abuse; it provides a trail for review after a compromise. Protect it from readers who should not see command history.
 
 ## File synchronization
 
@@ -69,7 +69,7 @@ The default remote root is:
 
 Do not set the remote root to a directory that contains unrelated data.
 
-The package respects `.gitignore` and `.tailscale-compute-ignore`. It also excludes common secret-file patterns and per-user credential directories, including `.ssh/`, `.aws/`, `.gnupg/`, `.netrc`, `.git-credentials`, shell histories, and key and certificate files. These rules cannot identify every secret. The user remains responsible for the files in the local project. In particular, never point `workspacePath` at a home directory or other broad root, because unknown secret files could still match.
+The package reads `.gitignore` and `.tailscale-compute-ignore` only from the workspace root. It converts simple rules to inline rsync include and exclude patterns for macOS and Linux. Fixed exclusions have priority over ignore-file negation. The package also excludes common secret-file patterns and per-user credential directories, including `.ssh/`, `.aws/`, `.gnupg/`, `.netrc`, `.git-credentials`, shell histories, and key and certificate files. These rules cannot identify every secret. The user remains responsible for the files in the local project. In particular, never point `workspacePath` at a home directory or other broad root, because unknown secret files could still match.
 
 ## Command output
 
@@ -82,6 +82,8 @@ The target parser accepts only:
 - Tailscale IPv4 addresses in `100.64.0.0/10`.
 - Tailscale IPv6 addresses under `fd7a:115c:a1e0::/48`.
 - Full names that end in `.ts.net`.
+
+IPv6 destinations must use square brackets. The parser rejects port suffixes, CIDR suffixes, SSH options, and whitespace in the destination.
 
 This check reduces accidental use on the public internet. It does not replace Tailscale policy rules or SSH authorization.
 

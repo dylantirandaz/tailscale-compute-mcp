@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { realpathSync, statSync } from "node:fs";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 
 import type {
@@ -46,11 +46,64 @@ const SYNC_EXCLUSIONS = [
   ".next/cache/",
 ] as const;
 
-export const DEFAULT_SYNC_FILTER_ARGUMENTS: readonly string[] = Object.freeze([
-  "--filter=:- .gitignore",
-  "--filter=:- .tailscale-compute-ignore",
-  ...SYNC_EXCLUSIONS.flatMap((pattern) => ["--exclude", pattern]),
-]);
+export const DEFAULT_SYNC_EXCLUSION_ARGUMENTS: readonly string[] = Object.freeze(
+  SYNC_EXCLUSIONS.flatMap((pattern) => ["--exclude", pattern]),
+);
+
+const IGNORE_FILE_NAMES = [".gitignore", ".tailscale-compute-ignore"] as const;
+const MAXIMUM_IGNORE_FILE_BYTES = 65_536;
+const MAXIMUM_IGNORE_RULES = 5_000;
+
+export function buildSyncFilterArguments(
+  localPath: string,
+): readonly string[] {
+  const includePairs: string[] = [];
+  const excludePairs: string[] = [];
+  let ruleCount = 0;
+
+  for (const fileName of IGNORE_FILE_NAMES) {
+    const filePath = path.join(localPath, fileName);
+    let content: string;
+    try {
+      const fileStats = statSync(filePath);
+      if (!fileStats.isFile() || fileStats.size > MAXIMUM_IGNORE_FILE_BYTES) {
+        continue;
+      }
+      content = readFileSync(filePath, "utf8");
+    } catch {
+      continue;
+    }
+
+    for (const rawLine of content.split("\n")) {
+      if (ruleCount >= MAXIMUM_IGNORE_RULES) {
+        break;
+      }
+      const line = rawLine.replace(/\r$/, "").replace(/[ \t]+$/, "");
+      if (
+        line.length === 0 ||
+        line.startsWith("#") ||
+        line.includes("\0")
+      ) {
+        continue;
+      }
+      ruleCount += 1;
+      if (line.startsWith("!")) {
+        const pattern = line.slice(1);
+        if (pattern.length > 0) {
+          includePairs.push("--include", pattern);
+        }
+      } else {
+        excludePairs.push("--exclude", line);
+      }
+    }
+  }
+
+  return Object.freeze([
+    ...DEFAULT_SYNC_EXCLUSION_ARGUMENTS,
+    ...includePairs,
+    ...excludePairs,
+  ]);
+}
 
 export type SyncMode = "incremental" | "clean" | "none";
 export type RunStage = "probe" | "prepare" | "sync" | "command";
@@ -427,7 +480,7 @@ export class RemoteComputeService {
     timeoutMilliseconds: number,
     signal: AbortSignal | undefined,
   ): Promise<ProcessOutcome> {
-    const exclusionArguments = DEFAULT_SYNC_FILTER_ARGUMENTS;
+    const filterArguments = buildSyncFilterArguments(workspace.localPath);
     const remoteShell = [
       "ssh",
       "-T",
@@ -452,7 +505,7 @@ export class RemoteComputeService {
       arguments: [
         "-rlpt",
         "--delete",
-        ...exclusionArguments,
+        ...filterArguments,
         "-e",
         remoteShell,
         "--",

@@ -51,7 +51,7 @@ The package runs on the local computer. No MCP service runs on the remote node. 
 - Node.js 20 or later.
 - Tailscale connected to the same tailnet as the remote node.
 - OpenSSH client.
-- `rsync` with filter support.
+- `rsync` with `--include` and `--exclude` support.
 - An MCP host that supports local stdio servers.
 
 macOS and Linux are the supported local systems for this beta.
@@ -128,7 +128,7 @@ Create `.vscode/mcp.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"
+        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.3"
       ],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "user@compute-node.example.ts.net"
@@ -149,7 +149,7 @@ Create `.cursor/mcp.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"
+        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.3"
       ],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "user@compute-node.example.ts.net"
@@ -164,7 +164,7 @@ Create `.cursor/mcp.json`:
 ```sh
 claude mcp add tailscale-compute \
   -e TAILSCALE_COMPUTE_HOST=user@compute-node.example.ts.net \
-  -- npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2
+  -- npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.3
 ```
 
 ## Check the connection
@@ -173,7 +173,7 @@ Run the package outside the MCP host first:
 
 ```sh
 TAILSCALE_COMPUTE_HOST=user@compute-node.example.ts.net \
-npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2 --check
+npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.3 --check
 ```
 
 A successful check returns `kind: "ready"`. It also reports:
@@ -236,7 +236,7 @@ The server runs commands for one workspace in sequence. Different workspaces can
 
 ## Excluded files
 
-The sync reads `.gitignore` and `.tailscale-compute-ignore` files. It also excludes these patterns by default:
+The sync reads `.gitignore` and `.tailscale-compute-ignore` from the workspace root. It supports blank lines, comments that start with `#`, negation that starts with `!`, and standard rsync patterns. It does not read nested ignore files. Each ignore file can be up to 64 KiB, and the server reads up to 5,000 rules across both files. It ignores a file or later rules that exceed these limits.
 
 ```text
 .git/
@@ -266,6 +266,8 @@ __pycache__/
 .next/cache/
 ```
 
+The fixed exclusions above have priority. An ignore-file negation cannot include one of these files.
+
 Add project-specific secrets and large outputs to `.tailscale-compute-ignore`.
 
 Ignored files are not copied. If a required file is ignored, create it on the remote node or provide its value through an explicit `compute_run.environment` entry. Remember that tool arguments are visible to the MCP host and model.
@@ -292,14 +294,14 @@ Register the package more than once with a different name and host. Keep one tar
   "mcpServers": {
     "compute-mac-mini": {
       "command": "npx",
-      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"],
+      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.3"],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "developer@mac-mini.example.ts.net"
       }
     },
     "compute-linux": {
       "command": "npx",
-      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"],
+      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.3"],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "developer@linux-node.example.ts.net",
         "TAILSCALE_COMPUTE_REMOTE_SHELL": "/bin/bash"

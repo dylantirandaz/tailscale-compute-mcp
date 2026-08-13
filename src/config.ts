@@ -132,7 +132,10 @@ export function parseTailscaleTarget(
 
   if (
     (user !== undefined && !/^[A-Za-z_][A-Za-z0-9._-]*$/.test(user)) ||
-    host.length === 0
+    host.length === 0 ||
+    host.includes("/") ||
+    /[^A-Za-z0-9._:[\]]/.test(host) ||
+    (host.includes(":") && !(host.startsWith("[") && host.endsWith("]")))
   ) {
     return invalidTarget(destination);
   }
