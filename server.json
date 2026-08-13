@@ -1,0 +1,58 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.dylantirandaz/tailscale-compute",
+  "title": "Tailscale Compute",
+  "description": "Run builds, tests, and benchmarks on your own Tailscale compute node.",
+  "repository": {
+    "url": "https://github.com/dylantirandaz/tailscale-compute-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0-beta.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@dylantirandaz/tailscale-compute-mcp",
+      "version": "0.1.0-beta.1",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TAILSCALE_COMPUTE_HOST",
+          "description": "SSH user and direct Tailscale IP address or full MagicDNS name.",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TAILSCALE_COMPUTE_LOCAL_ROOT",
+          "description": "Absolute local project path. The default is the MCP process directory.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TAILSCALE_COMPUTE_REMOTE_ROOT",
+          "description": "Managed workspace root on the remote node. The default is .cache/tailscale-compute-mcp.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TAILSCALE_COMPUTE_REMOTE_SHELL",
+          "description": "Remote shell: auto, /bin/sh, /bin/bash, or /bin/zsh.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TAILSCALE_COMPUTE_CONNECT_TIMEOUT_SECONDS",
+          "description": "SSH connection timeout from 1 through 60 seconds.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}

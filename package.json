@@ -1,0 +1,59 @@
+{
+  "name": "@dylantirandaz/tailscale-compute-mcp",
+  "version": "0.1.0-beta.1",
+  "mcpName": "io.github.dylantirandaz/tailscale-compute",
+  "description": "Run builds, tests, and benchmarks on your own Tailscale compute node from an MCP coding agent.",
+  "author": "Dylan Tirandaz",
+  "type": "module",
+  "bin": {
+    "tailscale-compute-mcp": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "server.json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsc -p tsconfig.test.json && node --test .test-dist/test/*.test.js",
+    "check": "npm run typecheck && npm test && npm run build",
+    "prepack": "npm run check"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dylantirandaz/tailscale-compute-mcp.git"
+  },
+  "homepage": "https://github.com/dylantirandaz/tailscale-compute-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/dylantirandaz/tailscale-compute-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "tailscale",
+    "ssh",
+    "remote-compute",
+    "mac-mini",
+    "linux",
+    "nvidia"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "^2.0.0",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  },
+  "license": "MIT"
+}

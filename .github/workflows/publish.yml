@@ -1,0 +1,54 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Use an OIDC-capable npm client
+        run: npm install --global npm@11
+      - name: Install dependencies
+        run: npm ci
+      - name: Check package
+        run: npm run check
+      - name: Verify release versions
+        run: |
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          SERVER_VERSION=$(node -p "require('./server.json').version")
+          test "v${PACKAGE_VERSION}" = "${GITHUB_REF_NAME}"
+          test "${PACKAGE_VERSION}" = "${SERVER_VERSION}"
+      - name: Publish npm package
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            NPM_TAG=beta
+          else
+            NPM_TAG=latest
+          fi
+          npm publish --access public --tag "${NPM_TAG}"
+      - name: Install MCP Registry publisher
+        run: |
+          curl --fail --location \
+            --output /tmp/mcp-publisher.tar.gz \
+            https://github.com/modelcontextprotocol/registry/releases/download/v1.8.1/mcp-publisher_linux_amd64.tar.gz
+          echo "a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc  /tmp/mcp-publisher.tar.gz" | sha256sum --check
+          tar --extract --gzip --file /tmp/mcp-publisher.tar.gz mcp-publisher
+      - name: Authenticate to MCP Registry
+        run: ./mcp-publisher login github-oidc
+      - name: Publish MCP Registry metadata
+        run: ./mcp-publisher publish
