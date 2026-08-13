@@ -128,7 +128,7 @@ Create `.vscode/mcp.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.1"
+        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"
       ],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "user@compute-node.example.ts.net"
@@ -149,7 +149,7 @@ Create `.cursor/mcp.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.1"
+        "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"
       ],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "user@compute-node.example.ts.net"
@@ -164,7 +164,7 @@ Create `.cursor/mcp.json`:
 ```sh
 claude mcp add tailscale-compute \
   -e TAILSCALE_COMPUTE_HOST=user@compute-node.example.ts.net \
-  -- npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.1
+  -- npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2
 ```
 
 ## Check the connection
@@ -173,7 +173,7 @@ Run the package outside the MCP host first:
 
 ```sh
 TAILSCALE_COMPUTE_HOST=user@compute-node.example.ts.net \
-npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.1 --check
+npx -y @dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2 --check
 ```
 
 A successful check returns `kind: "ready"`. It also reports:
@@ -292,14 +292,14 @@ Register the package more than once with a different name and host. Keep one tar
   "mcpServers": {
     "compute-mac-mini": {
       "command": "npx",
-      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.1"],
+      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "developer@mac-mini.example.ts.net"
       }
     },
     "compute-linux": {
       "command": "npx",
-      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.1"],
+      "args": ["-y", "@dylantirandaz/tailscale-compute-mcp@0.1.0-beta.2"],
       "env": {
         "TAILSCALE_COMPUTE_HOST": "developer@linux-node.example.ts.net",
         "TAILSCALE_COMPUTE_REMOTE_SHELL": "/bin/bash"
