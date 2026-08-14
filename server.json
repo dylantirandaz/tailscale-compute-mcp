@@ -7,12 +7,12 @@
     "url": "https://github.com/dylantirandaz/tailscale-compute-mcp",
     "source": "github"
   },
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.5",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@dylantirandaz/tailscale-compute-mcp",
-      "version": "0.1.0-beta.3",
+      "version": "0.1.0-beta.5",
       "transport": {
         "type": "stdio"
       },
@@ -48,6 +48,13 @@
         {
           "name": "TAILSCALE_COMPUTE_CONNECT_TIMEOUT_SECONDS",
           "description": "SSH connection timeout from 1 through 60 seconds.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "TAILSCALE_COMPUTE_MAX_ACTIVE_JOBS",
+          "description": "Optional node-wide active job limit from 1 through 1024.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"

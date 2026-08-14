@@ -31,31 +31,32 @@ The package does not provide:
 - A remote privilege boundary.
 - A command sandbox.
 
-`compute_run` has the full permissions of the configured remote SSH user. A successful attack against the MCP host, coding agent, package, or remote account can run commands and read files available to that user.
+`compute_run` and `compute_job_start` have the full permissions of the configured remote SSH user. A successful attack against the MCP host, coding agent, package, or remote account can run commands and read files available to that user.
 
 ## Required user controls
 
-1. Use a dedicated non-root remote user for `compute_run`. The server reports the remote user id and warns in `compute_status` and `compute_run` results when the SSH user is root (uid 0). A root compute user removes the last privilege boundary on the remote node.
+1. Use a dedicated non-root remote user for compute commands. The server reports the remote user id and warns when the SSH user is root (uid 0). A root compute user removes the last privilege boundary on the remote node.
 2. Limit the source and destination with Tailscale policy rules.
 3. Use an SSH agent or Tailscale SSH. Do not place private keys or passwords in MCP configuration.
 4. Verify the SSH host key before the first MCP call.
 5. Keep `StrictHostKeyChecking` enabled.
-6. Require approval for `compute_run`.
-7. Review command arguments before approval.
+6. Require approval for command, fetch, cancel, and deletion tools.
+7. Review command arguments and fetch paths before approval.
 8. Add project secrets to `.gitignore` or `.tailscale-compute-ignore`.
 9. Review remote command output before sending it to another system.
-10. Treat the local audit log as sensitive. It records every `compute_run` and can reveal project layout and command history.
-11. Remove access when a local or remote device is lost.
+10. Treat the local audit log as sensitive. It can reveal project layout and command history.
+11. Cancel or inspect durable jobs after an MCP client disconnects.
+12. Remove access when a local or remote device is lost.
 
 ## Audit log
 
-Every `compute_run` that reaches the workspace is appended as one JSON line to a local audit log. The default path is:
+Command starts, artifact fetch attempts, and successful workspace deletions are appended as JSON lines to a local audit log. The default path is:
 
 ```text
 ~/.config/tailscale-compute-mcp/compute-audit.log
 ```
 
-Set `TAILSCALE_COMPUTE_AUDIT_LOG` to use a different path. Each record contains the timestamp, target, remote workspace, program, arguments, working directory, sync mode, and outcome. It never contains environment variable values, standard input, or credentials. New audit directories use mode `0700`, and new audit files use mode `0600`. Existing paths keep their current permissions. The audit log cannot prevent abuse; it provides a trail for review after a compromise. Protect it from readers who should not see command history.
+Set `TAILSCALE_COMPUTE_AUDIT_LOG` to use a different path. Records contain only the fields that apply to the operation. Command records include the target, workspace, program, arguments, working directory, sync mode, and outcome. Fetch records include remote paths and the local destination. Deletion records include the managed remote path. Records never contain environment variable values, standard input, or credentials. New audit directories use mode `0700`, and new audit files use mode `0600`. Existing paths keep their current permissions. The audit log cannot prevent abuse; it provides a trail for review after a compromise. Protect it from readers who must not see command history.
 
 ## File synchronization
 
@@ -70,6 +71,48 @@ The default remote root is:
 Do not set the remote root to a directory that contains unrelated data.
 
 The package reads `.gitignore` and `.tailscale-compute-ignore` only from the workspace root. It converts simple rules to inline rsync include and exclude patterns for macOS and Linux. Fixed exclusions have priority over ignore-file negation. The package also excludes common secret-file patterns and per-user credential directories, including `.ssh/`, `.aws/`, `.gnupg/`, `.netrc`, `.git-credentials`, shell histories, and key and certificate files. These rules cannot identify every secret. The user remains responsible for the files in the local project. In particular, never point `workspacePath` at a home directory or other broad root, because unknown secret files could still match.
+
+`compute_workspace_delete` derives the remote directory from the local
+workspace and refuses deletion while a durable job is active. Do not set the
+managed remote root to a directory that contains unrelated data.
+
+## Durable job state
+
+Durable job directories are stored under `.jobs` in the configured remote
+root. They contain command metadata, receipts, logs, labels, terminal state,
+and immutable artifact snapshots. New directories and files use a restrictive
+umask. Any process that runs as the remote compute user can still read or
+change them. They are integrity evidence against accidental changes, not a
+security boundary against that user.
+
+Idempotency records store a hash of the target, workspace, key, and request.
+They do not store the raw idempotency key. A label is stored in the receipt and
+can appear in job listings. Do not put a secret in a label or idempotency key.
+
+`compute_job_delete` refuses an active job, an invalid job identifier, a
+symbolic-link job directory, and a job whose receipt does not match its
+workspace. A successful deletion removes that job's receipt, logs, and
+artifact snapshot. Review the job ID before approval.
+
+When `TAILSCALE_COMPUTE_MAX_ACTIVE_JOBS` is set, all server processes that use
+the same remote root and remote user coordinate through atomic admission
+reservations. This limit covers managed durable jobs only. It does not limit
+other user processes, CPU use, GPU memory, disk use, or network use, and it is
+not a scheduler or sandbox.
+
+## Artifact downloads
+
+`compute_fetch` accepts only relative remote paths and a local destination
+under the local workspace. It refuses remote symbolic links. It also refuses
+an existing destination unless the caller sets `overwrite: true`. A fetch by
+job ID accepts only artifacts declared before that job started and checks each
+downloaded file against the immutable receipt path, size, and SHA-256 digest.
+This check detects a changed snapshot. It does not prove that the original
+artifact was safe or trustworthy. Review all paths and the overwrite setting
+before approval.
+
+Fetched files can contain untrusted build output. Do not execute or publish a
+fetched file without review.
 
 ## Command output
 
@@ -89,7 +132,17 @@ This check reduces accidental use on the public internet. It does not replace Ta
 
 ## Accelerator workloads
 
-NVIDIA inventory is informational. It does not prove that a command used the intended GPU. A workload must fail when its required accelerator is missing or wrong. Do not accept CPU execution as proof for a requested GPU workload.
+NVIDIA inventory is informational. It does not prove that a command used the
+intended GPU. A workload must fail when its required accelerator is missing or
+wrong. Do not accept CPU execution as proof for a requested GPU workload.
+
+`compute_doctor` runs a fixed script with the caller-selected Python program.
+It imports that environment's `torch` package, calls `nvidia-smi` and optional
+`nvcc`, and runs a known operation on the required logical CUDA device.
+Importing a compromised Python package can run code with the remote user's
+permissions. Review `pythonProgram` before approval. The doctor never falls
+back to the CPU. Its successful result proves only the small doctor operation;
+it does not prove the real application workload.
 
 ## Supported versions
 

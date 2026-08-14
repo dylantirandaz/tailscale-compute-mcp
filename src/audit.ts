@@ -4,19 +4,58 @@ import path from "node:path";
 const AUDIT_DIRECTORY_MODE = 0o700;
 const AUDIT_FILE_MODE = 0o600;
 
-export interface AuditEntry {
+interface AuditBase {
   readonly timestamp: string;
   readonly target: string;
   readonly remoteWorkspace: string;
   readonly localWorkspace: string;
-  readonly program: string;
-  readonly arguments: readonly string[];
-  readonly workingDirectory: string;
-  readonly syncMode: string;
-  readonly outcomeKind: string;
-  readonly exitCode: number | undefined;
-  readonly stage: string | undefined;
 }
+
+export type AuditEntry =
+  | (AuditBase & {
+      readonly operation: "run";
+      readonly program: string;
+      readonly arguments: readonly string[];
+      readonly workingDirectory: string;
+      readonly syncMode: string;
+      readonly result:
+        | { readonly kind: "completed"; readonly exitCode: number }
+        | { readonly kind: "stage_failed"; readonly stage: string }
+        | { readonly kind: "protocol_error" }
+        | { readonly kind: "requirements_not_met" };
+    })
+  | (AuditBase & {
+      readonly operation: "job_start";
+      readonly jobId: string;
+      readonly program: string;
+      readonly arguments: readonly string[];
+      readonly workingDirectory: string;
+      readonly syncMode: string;
+      readonly result:
+        | { readonly kind: "started" }
+        | { readonly kind: "stage_failed"; readonly stage: string }
+        | { readonly kind: "protocol_error" }
+        | { readonly kind: "requirements_not_met" };
+    })
+  | (AuditBase & {
+      readonly operation: "fetch";
+      readonly paths: readonly string[];
+      readonly localDestination: string;
+      readonly overwrite: boolean;
+      readonly result:
+        | { readonly kind: "completed" }
+        | {
+            readonly kind: "artifact_refused";
+            readonly path: string;
+            readonly reason: "not_found" | "symbolic_link";
+          }
+        | { readonly kind: "stage_failed"; readonly stage: string };
+    })
+  | (AuditBase & {
+      readonly operation: "workspace_delete";
+      readonly existed: boolean;
+      readonly result: { readonly kind: "deleted" };
+    });
 
 export type AuditWriteResult =
   | { readonly kind: "appended" }

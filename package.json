@@ -1,6 +1,6 @@
 {
   "name": "@dylantirandaz/tailscale-compute-mcp",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.5",
   "mcpName": "io.github.dylantirandaz/tailscale-compute",
   "description": "Run builds, tests, and benchmarks on your own Tailscale compute node from an MCP coding agent.",
   "author": "Dylan Tirandaz",
@@ -10,6 +10,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "LICENSE",
     "README.md",
     "SECURITY.md",

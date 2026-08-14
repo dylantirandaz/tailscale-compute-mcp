@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { performance } from "node:perf_hooks";
 
@@ -5,12 +6,19 @@ export interface CapturedOutput {
   readonly text: string;
   readonly totalBytes: number;
   readonly omittedBytes: number;
+  readonly sha256: string;
+}
+
+export interface PrefixDigest {
+  readonly totalBytes: number;
+  readonly sha256: string;
 }
 
 interface ProcessOutcomeBase {
   readonly stdout: CapturedOutput;
   readonly stderr: CapturedOutput;
   readonly durationMilliseconds: number;
+  readonly stderrPrefixDigest?: PrefixDigest;
 }
 
 export type ProcessOutcome =
@@ -45,6 +53,7 @@ export interface ProcessRequest {
   readonly standardInput?: string;
   readonly timeoutMilliseconds: number;
   readonly outputLimitBytes: number;
+  readonly stderrDigestBoundary?: string;
   readonly signal?: AbortSignal;
 }
 
@@ -136,10 +145,15 @@ export async function runProcess(request: ProcessRequest): Promise<ProcessOutcom
       clearTimeout(forceKillTimer);
       request.signal?.removeEventListener("abort", abortListener);
 
+      const stderrPrefixDigest =
+        request.stderrDigestBoundary === undefined
+          ? undefined
+          : stderr.digestBeforeLast(request.stderrDigestBoundary);
       const commonResult = {
         stdout: stdout.capture(),
         stderr: stderr.capture(),
         durationMilliseconds: performance.now() - startedAt,
+        ...(stderrPrefixDigest === undefined ? {} : { stderrPrefixDigest }),
       };
 
       if (emittedError !== undefined) {
@@ -192,6 +206,8 @@ class BoundedOutputCollector {
   readonly #tailLimitBytes: number;
   readonly #headChunks: Buffer[] = [];
   readonly #tailChunks: Buffer[] = [];
+  readonly #hash = createHash("sha256");
+  #hashTail = Buffer.alloc(0);
   #headBytes = 0;
   #tailBytes = 0;
   #totalBytes = 0;
@@ -205,6 +221,7 @@ class BoundedOutputCollector {
   }
 
   append(chunk: Buffer): void {
+    this.appendDigest(chunk);
     this.#totalBytes += chunk.byteLength;
     let remainingChunk = chunk;
 
@@ -236,7 +253,43 @@ class BoundedOutputCollector {
         ? `${headText}${tailText}`
         : `${headText}\n... ${omittedBytes} bytes omitted ...\n${tailText}`;
 
-    return { text, totalBytes: this.#totalBytes, omittedBytes };
+    return {
+      text,
+      totalBytes: this.#totalBytes,
+      omittedBytes,
+      sha256: this.#hash.copy().update(this.#hashTail).digest("hex"),
+    };
+  }
+
+  digestBeforeLast(boundary: string): PrefixDigest | undefined {
+    const boundaryBytes = Buffer.from(boundary, "utf8");
+    const boundaryIndex = this.#hashTail.lastIndexOf(boundaryBytes);
+    if (boundaryIndex < 0) {
+      return undefined;
+    }
+    return {
+      totalBytes:
+        this.#totalBytes - (this.#hashTail.byteLength - boundaryIndex),
+      sha256: this.#hash
+        .copy()
+        .update(this.#hashTail.subarray(0, boundaryIndex))
+        .digest("hex"),
+    };
+  }
+
+  private appendDigest(chunk: Buffer): void {
+    const maximumTailBytes = 1_024;
+    const combined = Buffer.concat(
+      [this.#hashTail, chunk],
+      this.#hashTail.byteLength + chunk.byteLength,
+    );
+    if (combined.byteLength <= maximumTailBytes) {
+      this.#hashTail = combined;
+      return;
+    }
+    const committedBytes = combined.byteLength - maximumTailBytes;
+    this.#hash.update(combined.subarray(0, committedBytes));
+    this.#hashTail = Buffer.from(combined.subarray(committedBytes));
   }
 
   private trimTail(): void {

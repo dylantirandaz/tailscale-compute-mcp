@@ -8,6 +8,7 @@ const DEFAULT_REMOTE_ROOT = ".cache/tailscale-compute-mcp";
 const DEFAULT_CONNECT_TIMEOUT_SECONDS = 10;
 const MINIMUM_CONNECT_TIMEOUT_SECONDS = 1;
 const MAXIMUM_CONNECT_TIMEOUT_SECONDS = 60;
+const MAXIMUM_ACTIVE_JOB_LIMIT = 1_024;
 const DEFAULT_AUDIT_LOG_PATH = path.join(
   os.homedir(),
   ".config",
@@ -33,6 +34,7 @@ export interface ComputeConfiguration {
   readonly remoteShell: RemoteShellPreference;
   readonly connectTimeoutSeconds: number;
   readonly auditLogPath: string;
+  readonly maximumActiveJobs: number | undefined;
 }
 
 export type ConfigurationErrorCode =
@@ -41,7 +43,8 @@ export type ConfigurationErrorCode =
   | "invalid_remote_root"
   | "invalid_local_root"
   | "invalid_remote_shell"
-  | "invalid_connect_timeout";
+  | "invalid_connect_timeout"
+  | "invalid_max_active_jobs";
 
 export interface ConfigurationError {
   readonly code: ConfigurationErrorCode;
@@ -93,6 +96,12 @@ export function parseConfiguration(
   if (!connectTimeoutResult.ok) {
     return connectTimeoutResult;
   }
+  const maximumActiveJobsResult = parseMaximumActiveJobs(
+    environment["TAILSCALE_COMPUTE_MAX_ACTIVE_JOBS"],
+  );
+  if (!maximumActiveJobsResult.ok) {
+    return maximumActiveJobsResult;
+  }
 
   const auditLogPath = parseAuditLogPath(
     environment["TAILSCALE_COMPUTE_AUDIT_LOG"],
@@ -105,6 +114,7 @@ export function parseConfiguration(
     remoteShell: remoteShellResult.value,
     connectTimeoutSeconds: connectTimeoutResult.value,
     auditLogPath,
+    maximumActiveJobs: maximumActiveJobsResult.value,
   });
 }
 
@@ -263,6 +273,33 @@ function parseConnectTimeout(
   }
 
   return success(connectTimeoutSeconds);
+}
+
+function parseMaximumActiveJobs(
+  rawMaximumActiveJobs: string | undefined,
+): Result<number | undefined, ConfigurationError> {
+  if (rawMaximumActiveJobs === undefined) {
+    return success(undefined);
+  }
+  if (!/^\d+$/.test(rawMaximumActiveJobs)) {
+    return invalidMaximumActiveJobs();
+  }
+  const maximumActiveJobs = Number(rawMaximumActiveJobs);
+  if (
+    !Number.isSafeInteger(maximumActiveJobs) ||
+    maximumActiveJobs < 1 ||
+    maximumActiveJobs > MAXIMUM_ACTIVE_JOB_LIMIT
+  ) {
+    return invalidMaximumActiveJobs();
+  }
+  return success(maximumActiveJobs);
+}
+
+function invalidMaximumActiveJobs(): Result<never, ConfigurationError> {
+  return failure({
+    code: "invalid_max_active_jobs",
+    message: `TAILSCALE_COMPUTE_MAX_ACTIVE_JOBS must be an integer from 1 through ${MAXIMUM_ACTIVE_JOB_LIMIT}.`,
+  });
 }
 
 function invalidTarget(target: string): Result<never, ConfigurationError> {

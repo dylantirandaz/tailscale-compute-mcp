@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -21,7 +22,36 @@ test("captures a completed process result", async () => {
     assert.equal(outcome.exitCode, 7);
     assert.equal(outcome.stdout.text, "out");
     assert.equal(outcome.stderr.text, "err");
+    assert.equal(
+      outcome.stdout.sha256,
+      createHash("sha256").update("out").digest("hex"),
+    );
+    assert.equal(
+      outcome.stderr.sha256,
+      createHash("sha256").update("err").digest("hex"),
+    );
   }
+});
+
+test("hashes stderr before a protocol boundary", async () => {
+  const userStderr = "x".repeat(2_000);
+  const boundary = "\n__BOUNDARY__";
+  const outcome = await runProcess({
+    executable: process.execPath,
+    arguments: [
+      "-e",
+      `process.stderr.write(${JSON.stringify(`${userStderr}${boundary}0\n`)});`,
+    ],
+    timeoutMilliseconds: 5_000,
+    outputLimitBytes: 100,
+    stderrDigestBoundary: boundary,
+  });
+
+  assert.equal(outcome.kind, "completed");
+  assert.deepEqual(outcome.stderrPrefixDigest, {
+    totalBytes: Buffer.byteLength(userStderr),
+    sha256: createHash("sha256").update(userStderr).digest("hex"),
+  });
 });
 
 test("passes UTF-8 standard input", async () => {
@@ -53,6 +83,12 @@ test("keeps the start and end when output is truncated", async () => {
   assert.equal(outcome.stdout.text.endsWith("END"), true);
   assert.equal(outcome.stdout.omittedBytes > 0, true);
   assert.equal(outcome.stdout.totalBytes, 1_008);
+  assert.equal(
+    outcome.stdout.sha256,
+    createHash("sha256")
+      .update(`START${"x".repeat(1000)}END`)
+      .digest("hex"),
+  );
 });
 
 // Fake timers cannot drive or stop an operating system child process.

@@ -8,9 +8,10 @@ import { writeAuditEntry } from "../src/audit.js";
 
 const baseFields = {
   timestamp: "2026-08-13T00:00:00.000Z",
-  target: "builder@100.71.137.123",
+  target: "builder@100.64.0.1",
   remoteWorkspace: ".cache/tailscale-compute-mcp/project-abc",
   localWorkspace: "/Users/builder/project",
+  operation: "run" as const,
   program: "/bin/zsh",
   arguments: ["-lc", "npm test"],
   workingDirectory: ".",
@@ -23,17 +24,13 @@ test("appends a JSON audit line and creates its directory", () => {
   try {
     const first = writeAuditEntry(logPath, {
       ...baseFields,
-      outcomeKind: "completed",
-      exitCode: 0,
-      stage: undefined,
+      result: { kind: "completed", exitCode: 0 },
     });
     assert.deepEqual(first, { kind: "appended" });
 
     const second = writeAuditEntry(logPath, {
       ...baseFields,
-      outcomeKind: "stage_failed",
-      exitCode: undefined,
-      stage: "command",
+      result: { kind: "stage_failed", stage: "command" },
     });
     assert.deepEqual(second, { kind: "appended" });
 
@@ -47,13 +44,11 @@ test("appends a JSON audit line and creates its directory", () => {
     assert.ok(secondLine !== undefined);
     assert.deepEqual(JSON.parse(firstLine), {
       ...baseFields,
-      outcomeKind: "completed",
-      exitCode: 0,
+      result: { kind: "completed", exitCode: 0 },
     });
     assert.deepEqual(JSON.parse(secondLine), {
       ...baseFields,
-      outcomeKind: "stage_failed",
-      stage: "command",
+      result: { kind: "stage_failed", stage: "command" },
     });
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -63,9 +58,7 @@ test("appends a JSON audit line and creates its directory", () => {
 test("reports append failure as a value", () => {
   const result = writeAuditEntry("/dev/null/impossible/audit.log", {
     ...baseFields,
-    outcomeKind: "completed",
-    exitCode: 0,
-    stage: undefined,
+    result: { kind: "completed", exitCode: 0 },
   });
   assert.equal(result.kind, "failed");
   if (result.kind === "failed") {

@@ -46,6 +46,7 @@ test("keeps npm and MCP Registry identities aligned", () => {
   assert.deepEqual(packageEntry.transport, { type: "stdio" });
   assert.deepEqual(packageMetadata.files, [
     "dist",
+    "skills",
     "LICENSE",
     "README.md",
     "SECURITY.md",

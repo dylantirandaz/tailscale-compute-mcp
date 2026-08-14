@@ -7,10 +7,129 @@ import test from "node:test";
 import {
   DEFAULT_SYNC_EXCLUSION_ARGUMENTS,
   buildSyncFilterArguments,
+  evaluateHardwareRequirements,
+  parseNodeHealthProtocol,
   parseRemoteHardware,
+  parseWorkspaceDeleteProtocol,
+  parseWorkspaceStatusProtocol,
   parseRemoteRelativePath,
   quoteForPosixShell,
 } from "../src/compute.js";
+test("parses live node health", () => {
+  assert.deepEqual(
+    parseNodeHealthProtocol(
+      [
+        "checkedAt=2026-08-14T12:00:00Z",
+        "uptimeSeconds=3600",
+        "loadOne=0.5",
+        "loadFive=0.25",
+        "loadFifteen=0.125",
+        "availableMemoryBytes=8589934592",
+        "diskTotalBytes=1000000000000",
+        "diskAvailableBytes=500000000000",
+        "acceleratorUsage=none",
+        "activeJobCount=2",
+      ].join("\n"),
+    ),
+    {
+      ok: true,
+      value: {
+        checkedAt: "2026-08-14T12:00:00Z",
+        uptimeSeconds: 3_600,
+        loadAverage: {
+          oneMinute: 0.5,
+          fiveMinutes: 0.25,
+          fifteenMinutes: 0.125,
+        },
+        availableMemoryBytes: 8_589_934_592,
+        remoteRootStorage: {
+          totalBytes: 1_000_000_000_000,
+          availableBytes: 500_000_000_000,
+        },
+        acceleratorUsage: { kind: "none" },
+        activeJobCount: 2,
+      },
+    },
+  );
+});
+
+test("parses live NVIDIA usage separately from capacity", () => {
+  const result = parseNodeHealthProtocol(
+    [
+      "acceleratorUsage=nvidia",
+      "nvidiaUsage=0, GPU-1234, 1024, 7168, 37",
+      "nvidiaUsage=1, GPU-5678, 2048, 6144, N/A",
+      "checkedAt=2026-08-14T12:00:00Z",
+      "uptimeSeconds=3600",
+      "loadOne=0.5",
+      "loadFive=0.25",
+      "loadFifteen=0.125",
+      "availableMemoryBytes=8589934592",
+      "diskTotalBytes=1000000000000",
+      "diskAvailableBytes=500000000000",
+      "activeJobCount=2",
+    ].join("\n"),
+  );
+  assert.equal(result.ok, true);
+  if (!result.ok) {
+    return;
+  }
+  assert.deepEqual(result.value.acceleratorUsage, {
+    kind: "nvidia",
+    devices: [
+      {
+        kind: "nvidia",
+        index: 0,
+        uuid: "GPU-1234",
+        memoryUsedBytes: 1_073_741_824,
+        memoryAvailableBytes: 7_516_192_768,
+        utilization: { kind: "reported", percent: 37 },
+      },
+      {
+        kind: "nvidia",
+        index: 1,
+        uuid: "GPU-5678",
+        memoryUsedBytes: 2_147_483_648,
+        memoryAvailableBytes: 6_442_450_944,
+        utilization: { kind: "unavailable" },
+      },
+    ],
+  });
+});
+
+test("parses managed workspace protocols", () => {
+  assert.deepEqual(
+    parseWorkspaceStatusProtocol(
+      [
+        "kind=completed",
+        "totalBytes=4096",
+        "lastSyncAt=",
+        "lastRunAt=2026-08-14T12:00:00Z",
+      ].join("\n"),
+    ),
+    {
+      ok: true,
+      value: {
+        kind: "completed",
+        totalBytes: 4_096,
+        lastSyncAt: { kind: "never" },
+        lastRunAt: {
+          kind: "recorded",
+          value: "2026-08-14T12:00:00Z",
+        },
+      },
+    },
+  );
+  assert.deepEqual(parseWorkspaceDeleteProtocol("kind=deleted\nexisted=true\n"), {
+    ok: true,
+    value: true,
+  });
+  assert.equal(
+    parseWorkspaceDeleteProtocol("kind=deleted\nexisted=maybe\n").ok,
+    false,
+  );
+});
+
 
 test("keeps a remote working directory inside the workspace", () => {
   assert.deepEqual(parseRemoteRelativePath("packages/app"), {
@@ -264,6 +383,47 @@ test("parses Linux hardware and NVIDIA accelerator inventory", () => {
       kernelVersion: "6.11.0",
     },
   });
+  if (result.ok) {
+    assert.deepEqual(
+      evaluateHardwareRequirements(result.value, {
+        platform: "linux",
+        architecture: "aarch64",
+        minimumMemoryBytes: 100_000_000,
+        nvidia: {
+          minimumDeviceCount: 1,
+          minimumMemoryBytesPerDevice: 8_589_934_592,
+        },
+      }),
+      [],
+    );
+    assert.deepEqual(
+      evaluateHardwareRequirements(result.value, {
+        platform: "darwin",
+        architecture: "x86_64",
+        minimumMemoryBytes: 200_000_000,
+        nvidia: {
+          minimumDeviceCount: 2,
+          minimumMemoryBytesPerDevice: 10_000_000_000,
+        },
+      }),
+      [
+        { kind: "platform", required: "darwin", actual: "linux" },
+        { kind: "architecture", required: "x86_64", actual: "aarch64" },
+        {
+          kind: "memory",
+          requiredBytes: 200_000_000,
+          actualBytes: 134_217_728,
+        },
+        { kind: "nvidia_device_count", required: 2, actual: 1 },
+        {
+          kind: "nvidia_memory",
+          requiredDeviceCount: 2,
+          minimumBytesPerDevice: 10_000_000_000,
+          qualifyingDeviceCount: 0,
+        },
+      ],
+    );
+  }
 });
 
 test("reports an accelerator probe failure without hiding host hardware", () => {

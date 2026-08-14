@@ -66,13 +66,13 @@ test("rejects hostile and ambiguous targets for SSH", () => {
 });
 
 test("parses an SSH user without weakening target validation", () => {
-  const result = parseTailscaleTarget("builder@100.71.137.123");
+  const result = parseTailscaleTarget("builder@100.64.0.1");
 
   assert.deepEqual(result, {
     ok: true,
     value: {
-      destination: "builder@100.71.137.123",
-      host: "100.71.137.123",
+      destination: "builder@100.64.0.1",
+      host: "100.64.0.1",
     },
   });
   assert.equal(parseTailscaleTarget("builder@203.0.113.9").ok, false);
@@ -89,7 +89,7 @@ test("reports missing required configuration as a value", () => {
 
 test("builds the default safe configuration", () => {
   const result = parseConfiguration({
-    TAILSCALE_COMPUTE_HOST: "builder@100.71.137.123",
+    TAILSCALE_COMPUTE_HOST: "builder@100.64.0.1",
   });
 
   assert.equal(result.ok, true);
@@ -98,6 +98,7 @@ test("builds the default safe configuration", () => {
     assert.equal(result.value.remoteShell, "auto");
     assert.equal(result.value.connectTimeoutSeconds, 10);
     assert.equal(result.value.defaultWorkspace, undefined);
+    assert.equal(result.value.maximumActiveJobs, undefined);
     assert.equal(
       result.value.auditLogPath,
       path.join(os.homedir(), ".config", "tailscale-compute-mcp", "compute-audit.log"),
@@ -107,7 +108,7 @@ test("builds the default safe configuration", () => {
 
 test("honors an explicit audit log path", () => {
   const result = parseConfiguration({
-    TAILSCALE_COMPUTE_HOST: "builder@100.71.137.123",
+    TAILSCALE_COMPUTE_HOST: "builder@100.64.0.1",
     TAILSCALE_COMPUTE_AUDIT_LOG: "/var/log/tailscale-compute/audit.log",
   });
 
@@ -119,7 +120,7 @@ test("honors an explicit audit log path", () => {
 
 test("rejects a remote root that can leave its managed path", () => {
   const result = parseConfiguration({
-    TAILSCALE_COMPUTE_HOST: "100.71.137.123",
+    TAILSCALE_COMPUTE_HOST: "100.64.0.1",
     TAILSCALE_COMPUTE_REMOTE_ROOT: "../other-data",
   });
 
@@ -131,7 +132,7 @@ test("rejects a remote root that can leave its managed path", () => {
 
 test("accepts one supported remote shell", () => {
   const result = parseConfiguration({
-    TAILSCALE_COMPUTE_HOST: "100.71.137.123",
+    TAILSCALE_COMPUTE_HOST: "100.64.0.1",
     TAILSCALE_COMPUTE_REMOTE_SHELL: "/bin/bash",
   });
 
@@ -143,12 +144,38 @@ test("accepts one supported remote shell", () => {
 
 test("rejects an unsupported remote shell", () => {
   const result = parseConfiguration({
-    TAILSCALE_COMPUTE_HOST: "100.71.137.123",
+    TAILSCALE_COMPUTE_HOST: "100.64.0.1",
     TAILSCALE_COMPUTE_REMOTE_SHELL: "/usr/bin/fish",
   });
 
   assert.equal(result.ok, false);
   if (!result.ok) {
     assert.equal(result.error.code, "invalid_remote_shell");
+  }
+});
+
+test("accepts a node-wide active job limit", () => {
+  const result = parseConfiguration({
+    TAILSCALE_COMPUTE_HOST: "100.64.0.1",
+    TAILSCALE_COMPUTE_MAX_ACTIVE_JOBS: "8",
+  });
+
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.maximumActiveJobs, 8);
+  }
+});
+
+test("rejects an invalid node-wide active job limit", () => {
+  for (const rawLimit of ["0", "1.5", "1025"]) {
+    const result = parseConfiguration({
+      TAILSCALE_COMPUTE_HOST: "100.64.0.1",
+      TAILSCALE_COMPUTE_MAX_ACTIVE_JOBS: rawLimit,
+    });
+
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(result.error.code, "invalid_max_active_jobs");
+    }
   }
 });
